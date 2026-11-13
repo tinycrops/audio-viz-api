@@ -1,0 +1,43 @@
+# audio-viz-api
+
+An **audio-visualization request API + MCP server**. A client (a person, an agent, a radio's automation) sends audio or a waveform feed and gets back a video
+layer. Standard library only; the default renderer needs `ffmpeg`.
+
+```
+python3 keys.py add my-radio --daily 5      # prints the key once; only its hash is stored
+MS_HOST=127.0.0.1 MS_PORT=8921 python3 server.py
+```
+
+## Ask for a visualization
+
+REST (header `Authorization: Bearer KEY`):
+```
+POST /v1/films   {"audio_url": "https://..." | "audio_b64": "..." | "audio_json_url": "https://..." | "music_slug": "..."
+                  | "envelope": {"hz": 20, "values": [...]} | {"peaks": [...], "duration": 200} | "peaks_url": "https://...",
+                  "secs": 64, "mux_audio": true, "title": "..."}
+GET  /v1/films           your requests              GET /v1/films/ID         queued | running | done | failed
+GET  /v1/films/ID/video  the mp4 when done          GET /v1/music            library tracks (optional)
+```
+MCP: `POST /mcp` (JSON-RPC 2.0) with tools `list_music`, `request_visualization`, `film_status`, `list_films`.
+```json
+{"mcpServers": {"audio-viz": {"type": "http", "url": "http://127.0.0.1:8921/mcp", "headers": {"Authorization": "Bearer YOUR_KEY"}}}}
+```
+- **A radio has its own sound**, so send a waveform (`envelope`, or the `{peaks, duration}` overview many players expose) and you get a silent picture layer back.
+  With only a waveform the visual follows amplitude; with audio it can follow the spectrum.
+- `audio_json_url` takes a JSON response that carries base64 audio (a generation service's poll status, field `audio_data` by default).
+- Input URLs must be public http(s): private, loopback and link-local addresses are refused, so a key is not a way into the operator's network.
+- 5-90 s per request, audio up to 40 MB, a daily quota per key, `MS_MAX_JOBS` renders at a time.
+
+## Renderers
+
+`renderers/waveform.py` (default) draws a waveform plus a scrolling spectrum with ffmpeg. Set `MS_RENDERER="python3 /path/to/your_renderer.py"` to use another one.
+Contract: `RENDERER (--audio FILE | --envelope JSON) [--secs N] [--nomux] --out DIR` writes `DIR/film.mp4`; envelope JSON is `{"hz": N, "values": [0..1, ...]}`.
+
+## Configuration (environment)
+`MS_HOST` (127.0.0.1), `MS_PORT` (8921), `MS_DATA` (./data), `MS_KEYS` (keys.json), `MS_MUSIC_DIR` (optional folder with `catalog.json`:
+`{"tracks": [{"slug", "file", "seconds", "film"}]}`), `MS_RENDERER`, `MS_MAX_JOBS` (1).
+
+The server speaks plain HTTP and has key auth only. Keep it on a private interface, or put TLS and your own access controls in front of it before exposing it.
+
+## Tests
+`python3 -m unittest discover -s tests` starts the real server and renders real videos (needs `ffmpeg` and `ffprobe`).

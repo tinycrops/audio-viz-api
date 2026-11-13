@@ -1,0 +1,4 @@
+keys.json
+data/
+__pycache__/
+*.key
