@@ -1,5 +1,9 @@
 # audio-viz-api
 
+![a sample of what comes back](preview/preview.gif)
+
+**Send a sound, get back something to watch.** A radio plays its own audio; this gives it a picture that moves with the music. Open the live server's landing page for the full-quality clip, or call the free `preview` tool from any MCP client before deciding anything.
+
 An **audio-visualization request API + MCP server**. A client (a person, an agent, a radio's automation) sends audio or a waveform feed and gets back a video
 layer. Standard library only; the default renderer needs `ffmpeg`.
 

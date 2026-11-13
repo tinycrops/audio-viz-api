@@ -35,6 +35,17 @@ class E2E(unittest.TestCase):
         c, b = req(self.base, f"/v1/films/{fid}/video", self.key); self.assertEqual(c, 200); f = Path(self.t) / f"{fid}.mp4"; f.write_bytes(b)
         return subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(f)], text=True).split()
 
+    def test_00_preview_is_in_front_of_the_undecided(self):
+        c, b = req(self.base, "/"); self.assertEqual(c, 200); self.assertIn(b"Send a sound", b)                       # landing page, no key
+        c, b = req(self.base, "/preview.mp4"); self.assertEqual(c, 200); self.assertGreater(len(b), 100000)              # the sample clip, no key
+        c, b = req(self.base, "/v1/films"); self.assertEqual(c, 401); j = json.loads(b); self.assertIn("preview_video", j); self.assertIn("about", j)   # even the refusal sells
+        def rpc(m, p=None): return json.loads(req(self.base, "/mcp", None, dict(jsonrpc="2.0", id=1, method=m, params=p or {}))[1])
+        self.assertIn("preview", rpc("initialize")["result"]["instructions"])
+        self.assertIn("preview", [x["name"] for x in rpc("tools/list")["result"]["tools"]])                               # tools are listable without a key
+        r = rpc("tools/call", dict(name="preview", arguments={}))["result"]; self.assertIn("preview_video", r["content"][0]["text"])   # and the preview is free
+        self.assertEqual(req(self.base, "/mcp", None, dict(jsonrpc="2.0", id=3, method="tools/call", params=dict(name="request_visualization", arguments={"secs": 5})))[0], 401)  # real work needs a key
+        self.assertEqual(req(self.base, "/mcp", None, dict(jsonrpc="2.0", id=2, method="tools/call", params=dict(name="list_films")))[0], 401)
+
     def test_01_auth(self):
         self.assertEqual(req(self.base, "/v1/films")[0], 401); self.assertEqual(req(self.base, "/v1/films", "wrong")[0], 401)
     def test_02_audio_to_film_with_sound(self):
@@ -51,7 +62,7 @@ class E2E(unittest.TestCase):
         self.assertEqual(len([d for d in Path(self.t + "/data").iterdir() if d.name != ".locks"]), n)
     def test_05_mcp(self):
         def rpc(m, p=None): return json.loads(req(self.base, "/mcp", self.key, dict(jsonrpc="2.0", id=1, method=m, params=p or {}))[1])["result"]
-        self.assertEqual([t["name"] for t in rpc("tools/list")["tools"]], ["list_music", "request_visualization", "film_status", "list_films"])
+        self.assertEqual([t["name"] for t in rpc("tools/list")["tools"]], ["preview", "list_music", "request_visualization", "film_status", "list_films"])
         r = rpc("tools/call", dict(name="request_visualization", arguments=dict(music_slug="nope"))); self.assertTrue(r["isError"])
     def test_06_daily_limit(self):
         for _ in range(3): req(self.base, "/v1/films", self.key, dict(envelope=dict(hz=2, values=[.1] * 20), secs=5))

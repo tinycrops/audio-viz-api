@@ -38,6 +38,27 @@ def as_envelope(j):
     if not (10 <= len(e["values"]) <= 2_000_000) or e["hz"] <= 0: raise ValueError("waveform needs 10 to 2,000,000 values and hz > 0")
     return dict(hz=e["hz"], values=[float(x) for x in e["values"]])
 
+
+PREVIEW = Path(os.environ.get("MS_PREVIEW", HERE / "preview")); PITCH = "Send a sound, get back something to watch: a video layer that moves with your music. Ask the operator for a key."
+LANDING = """<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>audio-viz-api</title>
+<style>body{margin:0;background:#07080b;color:#e8e2d0;font:16px/1.5 ui-monospace,Menlo,monospace}main{max-width:880px;margin:0 auto;padding:6vh 20px}
+h1{font-size:2.2rem;margin:.2em 0}p{color:#cfc8b4}video{width:100%;border-radius:8px;background:#000}code,pre{background:#12141a;color:#f0b266;border-radius:6px}
+pre{padding:14px;overflow:auto}code{padding:2px 5px}.k{color:#8ad}</style><main><h1>Send a sound. Get back something to watch.</h1>
+<p>A radio plays its own audio. This gives it a picture: a video layer that breathes with the music, from audio or just a waveform feed.</p>
+<video src="/preview.mp4" autoplay muted loop playsinline controls></video><p>That clip is a sample of what a richer renderer makes. The default renderer draws a waveform and a scrolling spectrum.</p>
+<p><b>Try it from any MCP client</b> (tools are listed without a key, and <code>preview</code> is free):</p>
+<pre>{"mcpServers": {"audio-viz": {"type": "http", "url": "__BASE__/mcp",
+  "headers": {"Authorization": "Bearer YOUR_KEY"}}}}</pre>
+<p>or over REST: <code>POST __BASE__/v1/films</code> with <code>{"envelope": {"peaks": [...], "duration": 200}}</code> and get a video back.</p>
+<p>Want a key? Ask the operator. Open source: <a class=k href="https://github.com/tinycrops/audio-viz-api">github.com/tinycrops/audio-viz-api</a></p></main>"""
+
+def base(h):
+    return os.environ.get("MS_PUBLIC_URL") or f"{h.headers.get('X-Forwarded-Proto', 'http')}://{h.headers.get('Host', 'localhost')}"
+
+def preview_info(b):
+    return dict(preview_video=f"{b}/preview.mp4", landing=f"{b}/", what=PITCH,
+                try_it=dict(tool="request_visualization", arguments=dict(envelope=dict(peaks=[0.1, 0.9, 0.3, 0.8, 0.2, 0.7, 0.4, 1.0, 0.1, 0.6, 0.3, 0.9], duration=6), secs=6)))
+
 def who(h, q):
     a = h.headers.get("Authorization", ""); t = (a[7:] if a.startswith("Bearer ") else (q.get("k") or [""])[0]).strip(); s = hashlib.sha256(t.encode()).hexdigest()
     for n, v in K.load().items():
@@ -90,12 +111,15 @@ def _make(name, v, a):
     return film(fid)
 
 TOOLS = [
+ dict(name="preview", description="Free, no key needed: a sample clip of what you get back, and a ready-to-run example request. Call this first if you are deciding whether to use this server.", inputSchema=dict(type="object", properties={})),
  dict(name="list_music", description="Tracks the operator has made available as music_slug.", inputSchema=dict(type="object", properties={})),
  dict(name="request_visualization", description="Request an audio visualization (picture) for a radio or track. Give ONE of: music_slug, audio_url (public), audio_b64, audio_json_url (JSON with base64 audio), envelope {hz, values} or {peaks, duration} (a waveform feed; amplitude only, silent output), peaks_url. mux_audio=false returns picture only. Poll film_status.",
       inputSchema=dict(type="object", properties=dict(music_slug=dict(type="string"), audio_url=dict(type="string"), audio_b64=dict(type="string"), audio_json_url=dict(type="string"), audio_json_field=dict(type="string"), peaks_url=dict(type="string"), envelope=dict(type="object"), mux_audio=dict(type="boolean"), secs=dict(type="integer", description="5-90, default 64"), title=dict(type="string")))),
  dict(name="film_status", description="State of a request (queued, running, done, failed) and its video path.", inputSchema=dict(type="object", properties=dict(id=dict(type="string")), required=["id"])),
  dict(name="list_films", description="Your requests.", inputSchema=dict(type="object", properties={}))]
-def call(name, v, tool, args):
+def call(name, v, tool, args, b=""):
+    if tool == "preview": return preview_info(b)
+    if name is None: raise ValueError("a key is required for this tool. " + PITCH)
     if tool == "list_music": return music()
     if tool == "request_visualization": return make(name, v, args)
     if tool == "film_status":
@@ -110,16 +134,25 @@ class H(BaseHTTPRequestHandler):
     def send(self, code, obj, ct="application/json"):
         b = obj if isinstance(obj, bytes) else json.dumps(obj).encode(); self.send_response(code); self.send_header("Content-Type", ct); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
     def route(self, method):
-        HOOKS["before_read"](); u = urlparse(self.path); q = parse_qs(u.query); name, v = who(self, q)
-        if not name: return self.send(401, dict(error="a key is required: Authorization: Bearer KEY. Ask the operator for access."))
+        HOOKS["before_read"](); u = urlparse(self.path); q = parse_qs(u.query); name, v = who(self, q); b = base(self)
+        if method == "GET" and u.path in ("/", "/index.html"): return self.send(200, LANDING.replace("__BASE__", b).encode(), "text/html; charset=utf-8")
+        if method == "GET" and u.path == "/preview.mp4":
+            p = PREVIEW / "preview.mp4"; return self.send(200, p.read_bytes(), "video/mp4") if p.exists() else self.send(404, dict(error="no preview installed"))
+        if not name:
+            try: body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}") if method == "POST" else {}
+            except Exception: body = {}
+            m = body.get("method") if u.path == "/mcp" and isinstance(body, dict) else None
+            open_call = m in ("initialize", "tools/list") or m in ("notifications/initialized",) or (m == "tools/call" and (body.get("params") or {}).get("name") == "preview")
+            if not open_call: return self.send(401, dict(error="a key is required: Authorization: Bearer KEY.", about=PITCH, **preview_info(b)))
+            self._body = body
         try:
-            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}") if method == "POST" else {}
+            body = getattr(self, "_body", None) or (json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}") if method == "POST" else {})
             if u.path == "/mcp" and method == "POST":
                 rid, m = body.get("id"), body.get("method")
-                if m == "initialize": r = dict(protocolVersion="2025-03-26", capabilities=dict(tools={}), serverInfo=dict(name="audio-viz-api", version="0.1"))
+                if m == "initialize": r = dict(protocolVersion="2025-03-26", capabilities=dict(tools={}), serverInfo=dict(name="audio-viz-api", version="0.1"), instructions=PITCH + f" Call the free `preview` tool to see a sample clip: {b}/preview.mp4")
                 elif m == "tools/list": r = dict(tools=TOOLS)
                 elif m == "tools/call":
-                    try: r = dict(content=[dict(type="text", text=json.dumps(call(name, v, body["params"]["name"], body["params"].get("arguments") or {}), indent=1))])
+                    try: r = dict(content=[dict(type="text", text=json.dumps(call(name, v, body["params"]["name"], body["params"].get("arguments") or {}, b), indent=1))])
                     except Exception as e: r = dict(isError=True, content=[dict(type="text", text=str(e))])
                 elif m and m.startswith("notifications/"): return self.send(202, b"")
                 else: return self.send(200, dict(jsonrpc="2.0", id=rid, error=dict(code=-32601, message="method not found")))
