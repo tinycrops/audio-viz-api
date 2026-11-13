@@ -1,6 +1,10 @@
 # audio-viz-api
 
-![a sample of what comes back](preview/preview.gif)
+![a sample from a richer renderer](preview/preview.gif)
+
+*Above: a sample from a richer, pluggable renderer. Below: what this repo's default renderer returns out of the box.*
+
+![default renderer output](preview/default-renderer.gif)
 
 **Send a sound, get back something to watch.** A radio plays its own audio; this gives it a picture that moves with the music. Open the live server's landing page for the full-quality clip, or call the free `preview` tool from any MCP client before deciding anything.
 
@@ -11,6 +15,16 @@ layer. Standard library only; the default renderer needs `ffmpeg`.
 python3 keys.py add my-radio --daily 5      # prints the key once; only its hash is stored
 MS_HOST=127.0.0.1 MS_PORT=8921 python3 server.py
 ```
+
+## Example (this is the request that made the second clip)
+
+```bash
+curl -s https://YOUR-SERVER/v1/films -H "Authorization: Bearer YOUR_KEY" -d '{
+  "envelope": {"peaks": [0.1, 0.9, 0.3, 0.8, 0.2, 0.7, 0.4, 1.0, 0.1, 0.6, 0.3, 0.9], "duration": 6},
+  "secs": 6, "title": "my radio" }'
+# -> {"id": "f33f62e2c84f", "state": "queued", ...}      then poll GET /v1/films/ID until "done", and GET /v1/films/ID/video
+```
+A waveform feed gives a silent picture layer (the radio keeps its own sound); send `audio_url` or `audio_b64` and the picture follows the spectrum too.
 
 ## Ask for a visualization
 
