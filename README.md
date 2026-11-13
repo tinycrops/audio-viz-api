@@ -1,6 +1,6 @@
 # audio-viz-api
 
-![real output: three generative brains redrawing the same music](preview/preview.gif)
+![real output: a floating ASCII moon, darkness passing in front of it in time with the music](preview/eclipse.gif)
 
 *Above: real output from a private renderer that plugs in through `MS_RENDERER`. A track's energy becomes light; three different generative ASCII brains each melt and redraw it in their own texture, glyphs mixed across writing systems; amber marks cells being rewritten. Below: what this repo's default renderer returns out of the box.*
 
