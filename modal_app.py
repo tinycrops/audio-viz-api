@@ -11,7 +11,7 @@ HERE = Path(__file__).resolve().parent
 app = modal.App("audio-viz-api")
 vol = modal.Volume.from_name("audio-viz-data", create_if_missing=True)
 image = (modal.Image.debian_slim(python_version="3.12").pip_install("numpy", "imageio-ffmpeg").run_commands("ln -sf $(python -c 'import imageio_ffmpeg;print(imageio_ffmpeg.get_ffmpeg_exe())') /usr/local/bin/ffmpeg", "ffmpeg -hide_banner -filters | grep -c showwaves")
-         .env({"MS_DATA": "/data/films", "MS_KEYS": "/data/keys.json", "MS_HOST": "0.0.0.0", "MS_PORT": "8000", "MS_PREVIEW": "/app/preview", "MS_MAX_JOBS": "1"})
+         .env({"MS_DATA": "/data/films", "MS_KEYS": "/data/keys.json", "MS_HOST": "0.0.0.0", "MS_PORT": "8000", "MS_PREVIEW": "/app/preview", "MS_PUBLIC_URL": "https://medott29--audio-viz-api-web.us-east.modal.run", "MS_MAX_JOBS": "1"})
          .add_local_file(HERE / "server.py", "/app/server.py").add_local_file(HERE / "keys.py", "/app/keys.py")
          .add_local_file(HERE / "worker.py", "/app/worker.py").add_local_dir(HERE / "renderers", "/app/renderers").add_local_dir(HERE / "preview", "/app/preview"))
 
