@@ -13,6 +13,11 @@ FILMS = Path(os.environ.get("MS_DATA", HERE / "data")); FILMS.mkdir(parents=True
 MUSIC = Path(os.environ["MS_MUSIC_DIR"]) if os.environ.get("MS_MUSIC_DIR") else None; MAXB = 40 * 1024 * 1024
 HOST, PORT = os.environ.get("MS_HOST", "127.0.0.1"), int(os.environ.get("MS_PORT", 8921))
 
+def spawn(d, args, secs):
+    """Start a render for film dir d. Replaceable: modal_app.py swaps in a Modal function."""
+    subprocess.Popen([sys.executable, str(HERE / "worker.py"), str(d)] + args + ["--secs", str(secs)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+HOOKS = dict(spawn=spawn, before_read=lambda: None, after_write=lambda: None)   # modal_app.py overrides these
+
 def fetch(url, limit=MAXB):
     """GET a client-supplied URL: http(s) only, never a private/loopback/link-local address (a key must not be a way into the operator's network)."""
     u = urlparse(url)
@@ -81,7 +86,7 @@ def _make(name, v, a):
     if env: (d / "envelope.json").write_text(json.dumps(env)); args = ["--envelope", str(d / "envelope.json")]
     else: args = ["--audio", str(src)] + ([] if a.get("mux_audio", True) else ["--nomux"])
     (d / "meta.json").write_text(json.dumps(dict(id=fid, key=name, day=today, secs=secs, title=(a.get("title") or label)[:80], source=label, submitted=time.strftime("%F %T"))))
-    subprocess.Popen([sys.executable, str(HERE / "worker.py"), str(d)] + args + ["--secs", str(secs)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    HOOKS["spawn"](d, args, secs); HOOKS["after_write"]()
     return film(fid)
 
 TOOLS = [
@@ -105,7 +110,7 @@ class H(BaseHTTPRequestHandler):
     def send(self, code, obj, ct="application/json"):
         b = obj if isinstance(obj, bytes) else json.dumps(obj).encode(); self.send_response(code); self.send_header("Content-Type", ct); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
     def route(self, method):
-        u = urlparse(self.path); q = parse_qs(u.query); name, v = who(self, q)
+        HOOKS["before_read"](); u = urlparse(self.path); q = parse_qs(u.query); name, v = who(self, q)
         if not name: return self.send(401, dict(error="a key is required: Authorization: Bearer KEY. Ask the operator for access."))
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}") if method == "POST" else {}
@@ -134,4 +139,5 @@ class H(BaseHTTPRequestHandler):
         except Exception as e: self.send(400, dict(error=str(e)))
     def do_GET(self): self.route("GET")
     def do_POST(self): self.route("POST")
-if __name__ == "__main__": ThreadingHTTPServer((HOST, PORT), H).serve_forever()
+def serve(host=HOST, port=PORT): ThreadingHTTPServer((host, port), H).serve_forever()
+if __name__ == "__main__": serve()

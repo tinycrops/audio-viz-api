@@ -41,3 +41,14 @@ The server speaks plain HTTP and has key auth only. Keep it on a private interfa
 
 ## Tests
 `python3 -m unittest discover -s tests` starts the real server and renders real videos (needs `ffmpeg` and `ffprobe`).
+
+## Deploy live on Modal (scale to zero)
+
+```
+pip install modal && modal setup
+modal deploy modal_app.py                                   # -> https://<workspace>--audio-viz-api-web.<region>.modal.run  (MCP at /mcp)
+modal run modal_app.py::add_key --name my-radio --daily 5   # prints a key once
+```
+The web function and the render function both scale to zero, so nothing runs or bills while idle. Data and key hashes live in a Modal Volume (`audio-viz-data`).
+A request returns at once and renders in a separate 2-core function (`max_containers=2`); the daily quota per key bounds spend. TLS is Modal's. Point an MCP client at
+`https://<your-url>/mcp` with `Authorization: Bearer KEY`. `modal run modal_app.py::list_keys` / `::revoke_key --name X` manage keys.
