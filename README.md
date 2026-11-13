@@ -1,8 +1,8 @@
 # audio-viz-api
 
-![a sample from a richer renderer](preview/preview.gif)
+![real output: three generative brains redrawing the same music](preview/preview.gif)
 
-*Above: a sample from a richer, pluggable renderer. Below: what this repo's default renderer returns out of the box.*
+*Above: real output from a private renderer that plugs in through `MS_RENDERER`. A track's energy becomes light; three different generative ASCII brains each melt and redraw it in their own texture, glyphs mixed across writing systems; amber marks cells being rewritten. Below: what this repo's default renderer returns out of the box.*
 
 ![default renderer output](preview/default-renderer.gif)
 
